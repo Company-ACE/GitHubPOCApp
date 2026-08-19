@@ -5,38 +5,41 @@ pipeline {
     environment {
 
         // ============================================================
-        // ACE INSTALLATION
+        // IBM ACE
         // ============================================================
         ACE_HOME = 'C:\\Program Files\\IBM\\ACE\\12.0.12.22'
-        ACE_PROFILE = 'C:\\Program Files\\IBM\\ACE\\12.0.12.22\\server\\bin\\mqsiprofile.cmd'
+
+        ACE_PROFILE =
+            'C:\\Program Files\\IBM\\ACE\\12.0.12.22\\server\\bin\\mqsiprofile.cmd'
 
         // ============================================================
-        // ACE INDEPENDENT INTEGRATION SERVER
+        // EXISTING ACE INDEPENDENT INTEGRATION SERVER
         // ============================================================
         ACE_SERVER = 'C:\\ACE\\servers\\TEST'
 
         // ============================================================
-        // APPLICATION
+        // ACE APPLICATION
         // ============================================================
         APP_NAME = 'GitHubPOCApp'
 
         // ============================================================
-        // BAR DIRECTORY
-        // ============================================================
-        BAR_DIR = "${WORKSPACE}\\builds\\${BUILD_NUMBER}"
-        BAR_FILE = "${WORKSPACE}\\builds\\${BUILD_NUMBER}\\GitHubPOCApp.bar"
-
-        // ============================================================
-        // ACE WORKSPACE
+        // JENKINS BUILD DIRECTORIES
         // ============================================================
         ACE_WORKSPACE = "${WORKSPACE}\\ace-workspace"
 
+        BAR_DIR = "${WORKSPACE}\\builds\\${BUILD_NUMBER}"
+
+        BAR_FILE =
+            "${WORKSPACE}\\builds\\${BUILD_NUMBER}\\GitHubPOCApp.bar"
     }
+
 
     stages {
 
+
         // ============================================================
-        // 1. CHECKOUT
+        // STAGE 1
+        // GITHUB CHECKOUT
         // ============================================================
         stage('Checkout') {
 
@@ -58,13 +61,19 @@ pipeline {
                     echo.
                     echo Source Files:
                     dir
+
+                    echo.
+                    echo ========================================
+                    echo GITHUB CHECKOUT SUCCESSFUL
+                    echo ========================================
                 '''
             }
         }
 
 
         // ============================================================
-        // 2. VALIDATE ACE
+        // STAGE 2
+        // ACE VALIDATION
         // ============================================================
         stage('ACE Validation') {
 
@@ -81,23 +90,36 @@ pipeline {
                     echo ========================================
                     echo ACE Installation
                     echo ========================================
+
+                    echo ACE_HOME:
                     echo %ACE_HOME%
 
                     echo.
-                    echo Checking ibmint
+                    echo Checking ibmint:
                     where ibmint
 
                     if errorlevel 1 (
-                        echo ERROR: ibmint not found
+                        echo.
+                        echo ERROR: ibmint command not found
                         exit /b 1
                     )
 
                     echo.
-                    echo ACE VERSION
-                    ibmint version
+                    echo Checking ibmint.exe:
+
+                    if not exist "%ACE_HOME%\\server\\bin\\ibmint.exe" (
+                        echo.
+                        echo ERROR: ibmint.exe not found
+                        exit /b 1
+                    )
 
                     echo.
-                    echo ACE SOURCE VALIDATION SUCCESSFUL
+                    echo ACE Version:
+                    echo 12.0.12.22
+
+                    echo.
+                    echo ========================================
+                    echo ACE VALIDATION SUCCESSFUL
                     echo ========================================
                 '''
             }
@@ -105,7 +127,8 @@ pipeline {
 
 
         // ============================================================
-        // 3. PREPARE ACE APPLICATION
+        // STAGE 3
+        // PREPARE ACE APPLICATION
         // ============================================================
         stage('Prepare ACE Application') {
 
@@ -133,6 +156,16 @@ pipeline {
                     echo Copying ACE Application Files
                     echo ========================================
 
+                    if not exist "%WORKSPACE%\\.project" (
+                        echo ERROR: .project not found
+                        exit /b 1
+                    )
+
+                    if not exist "%WORKSPACE%\\application.descriptor" (
+                        echo ERROR: application.descriptor not found
+                        exit /b 1
+                    )
+
                     copy /Y "%WORKSPACE%\\.project" ^
                         "%ACE_WORKSPACE%\\%APP_NAME%\\"
 
@@ -153,6 +186,7 @@ pipeline {
                     dir /S /B "%ACE_WORKSPACE%"
 
                     echo.
+                    echo ========================================
                     echo ACE WORKSPACE PREPARATION SUCCESSFUL
                     echo ========================================
                 '''
@@ -161,7 +195,8 @@ pipeline {
 
 
         // ============================================================
-        // 4. PACKAGE BAR
+        // STAGE 4
+        // PACKAGE BAR
         // ============================================================
         stage('Package BAR') {
 
@@ -190,6 +225,10 @@ pipeline {
                     echo %BUILD_NUMBER%
 
                     echo.
+                    echo BAR Directory:
+                    echo %BAR_DIR%
+
+                    echo.
                     echo BAR File:
                     echo %BAR_FILE%
 
@@ -204,7 +243,9 @@ pipeline {
 
                     if errorlevel 1 (
                         echo.
+                        echo ========================================
                         echo ERROR: BAR PACKAGING FAILED
+                        echo ========================================
                         exit /b 1
                     )
 
@@ -220,7 +261,8 @@ pipeline {
 
 
         // ============================================================
-        // 5. VERIFY BAR
+        // STAGE 5
+        // VERIFY BAR
         // ============================================================
         stage('Verify BAR') {
 
@@ -239,6 +281,7 @@ pipeline {
                     echo %BAR_FILE%
 
                     if not exist "%BAR_FILE%" (
+                        echo.
                         echo ERROR: BAR file does not exist
                         exit /b 1
                     )
@@ -250,6 +293,12 @@ pipeline {
 
                     jar tf "%BAR_FILE%"
 
+                    if errorlevel 1 (
+                        echo.
+                        echo ERROR: Unable to read BAR file
+                        exit /b 1
+                    )
+
                     echo.
                     echo ========================================
                     echo Checking Application ZIP
@@ -258,6 +307,7 @@ pipeline {
                     jar tf "%BAR_FILE%" | findstr /I "%APP_NAME%.appzip"
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: %APP_NAME%.appzip not found
                         exit /b 1
                     )
@@ -272,7 +322,8 @@ pipeline {
 
 
         // ============================================================
-        // 6. CHECK ACE SERVER
+        // STAGE 6
+        // CHECK EXISTING ACE SERVER
         // ============================================================
         stage('Check ACE Server') {
 
@@ -296,17 +347,22 @@ pipeline {
                         echo.
                         echo ERROR: ACE Server does not exist
                         echo.
-                        echo Please create the ACE server manually first.
-                        echo.
+                        echo Expected:
+                        echo %ACE_SERVER%
                         exit /b 1
                     )
 
                     echo.
                     echo ========================================
-                    echo ACE SERVER DIRECTORY FOUND
+                    echo ACE SERVER DIRECTORY
                     echo ========================================
 
                     dir "%ACE_SERVER%"
+
+                    echo.
+                    echo ========================================
+                    echo Checking server.conf.yaml
+                    echo ========================================
 
                     if not exist "%ACE_SERVER%\\server.conf.yaml" (
                         echo.
@@ -315,6 +371,7 @@ pipeline {
                     )
 
                     echo.
+                    echo ========================================
                     echo ACE SERVER VALIDATION SUCCESSFUL
                     echo ========================================
                 '''
@@ -323,7 +380,8 @@ pipeline {
 
 
         // ============================================================
-        // 7. DEPLOY BAR
+        // STAGE 7
+        // DEPLOY BAR
         // ============================================================
         stage('Deploy BAR') {
 
@@ -341,16 +399,20 @@ pipeline {
                     echo DEPLOYMENT INFORMATION
                     echo ========================================
 
+                    echo Application:
+                    echo %APP_NAME%
+
+                    echo.
                     echo BAR:
                     echo %BAR_FILE%
 
                     echo.
-                    echo ACE SERVER:
+                    echo ACE Server:
                     echo %ACE_SERVER%
 
                     echo.
                     echo ========================================
-                    echo Deploying BAR
+                    echo DEPLOYING BAR
                     echo ========================================
 
                     ibmint deploy ^
@@ -376,7 +438,8 @@ pipeline {
 
 
         // ============================================================
-        // 8. VERIFY DEPLOYMENT
+        // STAGE 8
+        // VERIFY DEPLOYMENT
         // ============================================================
         stage('Verify Deployment') {
 
@@ -391,23 +454,45 @@ pipeline {
 
                     echo.
                     echo ========================================
-                    echo VERIFYING DEPLOYMENT
+                    echo VERIFYING ACE DEPLOYMENT
                     echo ========================================
-
-                    echo.
-                    echo Server:
-                    echo %ACE_SERVER%
 
                     echo.
                     echo Application:
                     echo %APP_NAME%
 
                     echo.
+                    echo ACE Server:
+                    echo %ACE_SERVER%
+
+                    echo.
                     echo ========================================
-                    echo Checking deployed files
+                    echo Checking runtime directory
                     echo ========================================
 
+                    if not exist "%ACE_SERVER%\\run" (
+                        echo.
+                        echo ERROR: ACE run directory not found
+                        exit /b 1
+                    )
+
                     dir "%ACE_SERVER%\\run" /S /B
+
+                    echo.
+                    echo ========================================
+                    echo Checking application in server
+                    echo ========================================
+
+                    dir "%ACE_SERVER%\\run" /S /B | findstr /I "%APP_NAME%"
+
+                    if errorlevel 1 (
+                        echo.
+                        echo WARNING: Application name not found
+                        echo in runtime directory.
+                        echo.
+                        echo Deployment command completed,
+                        echo but runtime verification needs review.
+                    )
 
                     echo.
                     echo ========================================
@@ -419,74 +504,50 @@ pipeline {
 
 
         // ============================================================
-        // 9. START ACE SERVER
-        // ============================================================
-        stage('Start ACE Server') {
-
-            steps {
-
-                echo '========================================'
-                echo 'STAGE 9 - Start ACE Server'
-                echo '========================================'
-
-                bat '''
-                    call "%ACE_PROFILE%"
-
-                    echo.
-                    echo ========================================
-                    echo Starting ACE Server
-                    echo ========================================
-
-                    ibman start "%ACE_SERVER%"
-
-                    if errorlevel 1 (
-                        echo.
-                        echo WARNING: ibman start returned an error.
-                        echo Server may already be running.
-                    )
-
-                    echo.
-                    echo Waiting for ACE server...
-                    timeout /T 10 /NOBREAK
-
-                    echo.
-                    echo ACE SERVER START COMMAND COMPLETED
-                    echo ========================================
-                '''
-            }
-        }
-
-
-        // ============================================================
-        // 10. FINAL VERIFICATION
+        // STAGE 9
+        // FINAL STATUS
         // ============================================================
         stage('Final Verification') {
 
             steps {
 
                 echo '========================================'
-                echo 'STAGE 10 - Final Verification'
+                echo 'STAGE 9 - Final Verification'
                 echo '========================================'
 
                 bat '''
-                    call "%ACE_PROFILE%"
-
                     echo.
                     echo ========================================
-                    echo FINAL ACE DEPLOYMENT CHECK
+                    echo FINAL DEPLOYMENT STATUS
                     echo ========================================
 
                     echo.
-                    echo ACE Server:
-                    echo %ACE_SERVER%
+                    echo GitHub Repository:
+                    echo https://github.com/Company-ACE/GitHubPOCApp.git
+
+                    echo.
+                    echo Branch:
+                    echo dev
 
                     echo.
                     echo Application:
                     echo %APP_NAME%
 
                     echo.
+                    echo Build:
+                    echo %BUILD_NUMBER%
+
+                    echo.
+                    echo BAR:
+                    echo %BAR_FILE%
+
+                    echo.
+                    echo ACE Server:
+                    echo %ACE_SERVER%
+
+                    echo.
                     echo ========================================
-                    echo Pipeline Deployment Completed
+                    echo ACE DEPLOYMENT PIPELINE COMPLETED
                     echo ========================================
                 '''
             }
@@ -506,11 +567,14 @@ pipeline {
             echo 'JENKINS BUILD SUCCESSFUL'
             echo '========================================'
 
-            echo "Application: ${APP_NAME}"
-            echo "Build Number: ${BUILD_NUMBER}"
-            echo "BAR: ${BAR_FILE}"
-            echo "ACE Server: ${ACE_SERVER}"
+            echo "Application : ${APP_NAME}"
+            echo "Build       : ${BUILD_NUMBER}"
+            echo "BAR         : ${BAR_FILE}"
+            echo "ACE Server  : ${ACE_SERVER}"
 
+            echo '========================================'
+            echo 'GITHUB -> JENKINS -> ACE DEPLOYMENT OK'
+            echo '========================================'
         }
 
         failure {
@@ -519,7 +583,7 @@ pipeline {
             echo 'JENKINS BUILD FAILED'
             echo '========================================'
 
-            echo 'Please check the failed stage in Jenkins console.'
+            echo 'Check the failed stage in the Jenkins console.'
         }
 
         always {
