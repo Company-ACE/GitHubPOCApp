@@ -5,24 +5,34 @@ pipeline {
     environment {
         ACE_HOME = 'C:\\Program Files\\IBM\\ACE\\12.0.12.22'
         APP_NAME = 'GitHubPOCApp'
-        BAR_DIR  = 'build'
+        BUILD_DIR = 'build'
         BAR_NAME = 'GitHubPOCApp.bar'
+        ACE_WORKSPACE = 'ace-workspace'
     }
 
     stages {
 
+        // ============================================================
+        // 1. CHECKOUT
+        // ============================================================
         stage('Checkout') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 1 - GitHub Checkout'
                 echo '========================================'
 
-                checkout scm
+                // Jenkins already performs Declarative Checkout SCM.
+                // Do not checkout again here.
 
                 bat '''
                     echo.
-                    echo Workspace:
+                    echo Jenkins Workspace:
                     echo %WORKSPACE%
+
+                    echo.
+                    echo Git Commit:
+                    git rev-parse HEAD
 
                     echo.
                     echo Source files:
@@ -31,8 +41,13 @@ pipeline {
             }
         }
 
+
+        // ============================================================
+        // 2. VALIDATE ACE SOURCE
+        // ============================================================
         stage('ACE Validation') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 2 - ACE Project Validation'
                 echo '========================================'
@@ -47,10 +62,6 @@ pipeline {
                     echo.
                     echo Checking ibmint:
                     where ibmint
-
-                    echo.
-                    echo Checking mqsicreatebar:
-                    where mqsicreatebar
 
                     echo.
                     echo Checking ACE project:
@@ -76,87 +87,127 @@ pipeline {
                     )
 
                     echo.
-                    echo ACE project files validated successfully.
+                    echo ACE source files validated successfully.
                 '''
             }
         }
 
-     stage('Create BAR') {
-    steps {
-        echo '========================================'
-        echo 'STAGE 3 - Create BAR File'
-        echo '========================================'
 
-        bat '''
-            echo.
-            echo Creating ACE workspace...
+        // ============================================================
+        // 3. CREATE ACE APPLICATION WORKSPACE
+        // ============================================================
+        stage('Prepare ACE Workspace') {
+            steps {
 
-            if exist "%WORKSPACE%\\ace-workspace" (
-                rmdir /S /Q "%WORKSPACE%\\ace-workspace"
-            )
+                echo '========================================'
+                echo 'STAGE 3 - Prepare ACE Application'
+                echo '========================================'
 
-            if exist "%WORKSPACE%\\%BAR_DIR%" (
-                rmdir /S /Q "%WORKSPACE%\\%BAR_DIR%"
-            )
+                bat '''
+                    echo.
+                    echo Cleaning previous build directories...
 
-            mkdir "%WORKSPACE%\\ace-workspace"
-            mkdir "%WORKSPACE%\\ace-workspace\\%APP_NAME%"
-            mkdir "%WORKSPACE%\\%BAR_DIR%"
+                    if exist "%WORKSPACE%\\%ACE_WORKSPACE%" (
+                        rmdir /S /Q "%WORKSPACE%\\%ACE_WORKSPACE%"
+                    )
 
-            echo.
-            echo Copying ACE project...
+                    if exist "%WORKSPACE%\\%BUILD_DIR%" (
+                        rmdir /S /Q "%WORKSPACE%\\%BUILD_DIR%"
+                    )
 
-            xcopy "%WORKSPACE%\\.project" "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\" /Y
-            xcopy "%WORKSPACE%\\application.descriptor" "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\" /Y
-            xcopy "%WORKSPACE%\\*.msgflow" "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\" /Y
-            xcopy "%WORKSPACE%\\*.esql" "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\" /Y
+                    mkdir "%WORKSPACE%\\%ACE_WORKSPACE%"
+                    mkdir "%WORKSPACE%\\%ACE_WORKSPACE%\\%APP_NAME%"
+                    mkdir "%WORKSPACE%\\%BUILD_DIR%"
 
-            echo.
-            echo ACE workspace structure:
-            dir /S /B "%WORKSPACE%\\ace-workspace"
+                    echo.
+                    echo Creating ACE application structure...
 
-            echo.
-            echo Loading ACE environment...
+                    xcopy "%WORKSPACE%\\.project" ^
+                          "%WORKSPACE%\\%ACE_WORKSPACE%\\%APP_NAME%\\" /Y
 
-            call "%ACE_HOME%\\server\\bin\\mqsiprofile.cmd"
+                    xcopy "%WORKSPACE%\\application.descriptor" ^
+                          "%WORKSPACE%\\%ACE_WORKSPACE%\\%APP_NAME%\\" /Y
 
-            echo.
-            echo Creating BAR:
-            echo %WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%
+                    xcopy "%WORKSPACE%\\*.msgflow" ^
+                          "%WORKSPACE%\\%ACE_WORKSPACE%\\%APP_NAME%\\" /Y
 
-            mqsicreatebar ^
-                -data "%WORKSPACE%\\ace-workspace" ^
-                -b "%WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%" ^
-                -p "%APP_NAME%" ^
-                -o "%APP_NAME%\\GitHubPOCFlow.msgflow" ^
-                -cleanBuild
+                    xcopy "%WORKSPACE%\\*.esql" ^
+                          "%WORKSPACE%\\%ACE_WORKSPACE%\\%APP_NAME%\\" /Y
 
-            if errorlevel 1 (
-                echo.
-                echo ERROR: BAR creation failed
-                exit /b 1
-            )
+                    echo.
+                    echo ACE Application structure:
 
-            echo.
-            echo ========================================
-            echo BAR CREATION COMPLETED
-            echo ========================================
-        '''
-    }
-}
+                    dir /S /B "%WORKSPACE%\\%ACE_WORKSPACE%"
+                '''
+            }
+        }
 
+
+        // ============================================================
+        // 4. PACKAGE BAR USING IBM ACE ibmint
+        // ============================================================
+        stage('Package BAR') {
+            steps {
+
+                echo '========================================'
+                echo 'STAGE 4 - Package ACE BAR'
+                echo '========================================'
+
+                bat '''
+                    call "%ACE_HOME%\\server\\bin\\mqsiprofile.cmd"
+
+                    echo.
+                    echo Checking ibmint:
+                    where ibmint
+
+                    echo.
+                    echo Creating BAR:
+
+                    echo BAR:
+                    echo %WORKSPACE%\\%BUILD_DIR%\\%BAR_NAME%
+
+                    echo.
+                    echo Running ibmint package...
+
+                    ibmint package ^
+                        --input-path "%WORKSPACE%\\%ACE_WORKSPACE%" ^
+                        --output-bar-file "%WORKSPACE%\\%BUILD_DIR%\\%BAR_NAME%" ^
+                        --application "%APP_NAME%"
+
+                    if errorlevel 1 (
+                        echo.
+                        echo ========================================
+                        echo ERROR: ACE BAR packaging failed
+                        echo ========================================
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ========================================
+                    echo BAR PACKAGING COMPLETED
+                    echo ========================================
+                '''
+            }
+        }
+
+
+        // ============================================================
+        // 5. VERIFY BAR
+        // ============================================================
         stage('Verify BAR') {
             steps {
+
                 echo '========================================'
-                echo 'STAGE 4 - Verify BAR'
+                echo 'STAGE 5 - Verify BAR'
                 echo '========================================'
 
                 bat '''
                     echo.
                     echo BAR directory:
-                    dir "%WORKSPACE%\\%BAR_DIR%"
 
-                    if not exist "%WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%" (
+                    dir "%WORKSPACE%\\%BUILD_DIR%"
+
+                    if not exist "%WORKSPACE%\\%BUILD_DIR%\\%BAR_NAME%" (
                         echo.
                         echo ERROR: BAR file does not exist
                         exit /b 1
@@ -166,17 +217,24 @@ pipeline {
                     echo ========================================
                     echo BAR CREATED SUCCESSFULLY
                     echo ========================================
+
                     echo.
-                    echo BAR:
-                    echo %WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%
+                    echo BAR contents:
+
+                    jar tf "%WORKSPACE%\\%BUILD_DIR%\\%BAR_NAME%"
                 '''
             }
         }
     }
 
+
+    // ================================================================
+    // POST ACTIONS
+    // ================================================================
     post {
 
         success {
+
             echo '========================================'
             echo 'ACE BAR BUILD SUCCESSFUL'
             echo '========================================'
@@ -186,8 +244,16 @@ pipeline {
         }
 
         failure {
+
             echo '========================================'
             echo 'ACE BAR BUILD FAILED'
+            echo '========================================'
+        }
+
+        always {
+
+            echo '========================================'
+            echo 'BUILD COMPLETED'
             echo '========================================'
         }
     }
