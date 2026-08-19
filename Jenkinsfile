@@ -54,6 +54,7 @@ pipeline {
 
                     echo.
                     echo Checking ACE project:
+
                     if not exist "%WORKSPACE%\\.project" (
                         echo ERROR: .project not found
                         exit /b 1
@@ -102,7 +103,7 @@ pipeline {
                     mqsicreatebar ^
                         -data "%WORKSPACE%" ^
                         -b "%WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%" ^
-                        -p "%APP_NAME%" ^
+                        -o "GitHubPOCFlow.msgflow" ^
                         -cleanBuild
 
                     if errorlevel 1 (
