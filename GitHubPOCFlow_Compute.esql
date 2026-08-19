@@ -5,7 +5,7 @@ CREATE COMPUTE MODULE GitHubPOCFlow_Compute
 	BEGIN
 		-- CALL CopyMessageHeaders();
 		-- CALL CopyEntireMessage();
-		SET OutputRoot.JSON.data.message= 'Hello from ACE    ';
+		SET OutputRoot.JSON.data.message= 'Hello from     ';
 		RETURN TRUE;
 	END;
 
