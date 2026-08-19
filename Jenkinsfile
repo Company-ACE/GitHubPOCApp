@@ -81,7 +81,7 @@ pipeline {
             }
         }
 
-       stage('Create BAR') {
+     stage('Create BAR') {
     steps {
         echo '========================================'
         echo 'STAGE 3 - Create BAR File'
@@ -95,8 +95,13 @@ pipeline {
                 rmdir /S /Q "%WORKSPACE%\\ace-workspace"
             )
 
+            if exist "%WORKSPACE%\\%BAR_DIR%" (
+                rmdir /S /Q "%WORKSPACE%\\%BAR_DIR%"
+            )
+
             mkdir "%WORKSPACE%\\ace-workspace"
             mkdir "%WORKSPACE%\\ace-workspace\\%APP_NAME%"
+            mkdir "%WORKSPACE%\\%BAR_DIR%"
 
             echo.
             echo Copying ACE project...
@@ -108,7 +113,6 @@ pipeline {
 
             echo.
             echo ACE workspace structure:
-
             dir /S /B "%WORKSPACE%\\ace-workspace"
 
             echo.
@@ -118,11 +122,13 @@ pipeline {
 
             echo.
             echo Creating BAR:
+            echo %WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%
 
             mqsicreatebar ^
                 -data "%WORKSPACE%\\ace-workspace" ^
                 -b "%WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%" ^
                 -p "%APP_NAME%" ^
+                -o "%APP_NAME%\\GitHubPOCFlow.msgflow" ^
                 -cleanBuild
 
             if errorlevel 1 (
@@ -132,7 +138,9 @@ pipeline {
             )
 
             echo.
-            echo BAR creation completed successfully.
+            echo ========================================
+            echo BAR CREATION COMPLETED
+            echo ========================================
         '''
     }
 }
