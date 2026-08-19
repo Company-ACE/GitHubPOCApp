@@ -3,15 +3,23 @@ pipeline {
     agent any
 
     environment {
-        ACE_HOME = 'C:\\Program Files\\IBM\\ACE\\12.0.12.22'
-        ACE_SERVER_WORKDIR = 'C:\\ACE\\servers\\TEST'
-        APPLICATION_NAME = 'GitHubPOCApp'
+        ACE_HOME       = 'C:\\Program Files\\IBM\\ACE\\12.0.12.22'
+        ACE_PROFILE    = 'C:\\Program Files\\IBM\\ACE\\12.0.12.22\\server\\bin\\mqsiprofile.cmd'
+        ACE_SERVER     = 'C:\\ACE\\servers\\TEST'
+        APP_NAME       = 'GitHubPOCApp'
+        BAR_NAME       = 'GitHubPOCApp.bar'
+        REPOSITORY     = 'https://github.com/Company-ACE/GitHubPOCApp.git'
+        BRANCH         = 'dev'
     }
 
     stages {
 
+        // =========================================================
+        // STAGE 1
+        // =========================================================
         stage('Checkout') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 1 - GitHub Checkout'
                 echo '========================================'
@@ -20,16 +28,16 @@ pipeline {
                     echo.
                     echo Jenkins Workspace:
                     echo %WORKSPACE%
-                    echo.
 
+                    echo.
                     echo Git Commit:
                     git rev-parse HEAD
-                    echo.
 
+                    echo.
                     echo Source Files:
                     dir
-                    echo.
 
+                    echo.
                     echo ========================================
                     echo GITHUB CHECKOUT SUCCESSFUL
                     echo ========================================
@@ -38,14 +46,19 @@ pipeline {
         }
 
 
+        // =========================================================
+        // STAGE 2
+        // =========================================================
         stage('ACE Validation') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 2 - ACE Validation'
                 echo '========================================'
 
                 bat '''
-                    call "%ACE_HOME%\\server\\bin\\mqsiprofile.cmd"
+                    call "%ACE_PROFILE%"
+                    if errorlevel 1 exit /b 1
 
                     echo.
                     echo ========================================
@@ -70,19 +83,30 @@ pipeline {
 
                     echo.
                     echo ACE Version:
-                    "%ACE_HOME%\\server\\bin\\mqsicmdenv.cmd" -version 2>nul || echo 12.0.12.22
+                    "%ACE_HOME%\\server\\bin\\ibmint.exe" --version
+
+                    if errorlevel 1 (
+                        echo WARNING: ibmint --version returned non-zero
+                        echo Continuing because ACE installation is present
+                    )
 
                     echo.
                     echo ========================================
                     echo ACE VALIDATION SUCCESSFUL
                     echo ========================================
+
+                    exit /b 0
                 '''
             }
         }
 
 
+        // =========================================================
+        // STAGE 3
+        // =========================================================
         stage('Prepare ACE Application') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 3 - Prepare ACE Application'
                 echo '========================================'
@@ -98,7 +122,7 @@ pipeline {
                     )
 
                     mkdir "%WORKSPACE%\\ace-workspace"
-                    mkdir "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%"
+                    mkdir "%WORKSPACE%\\ace-workspace\\%APP_NAME%"
 
                     echo.
                     echo ========================================
@@ -116,16 +140,16 @@ pipeline {
                     )
 
                     copy /Y "%WORKSPACE%\\.project" ^
-                        "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%\\"
+                        "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\"
 
                     copy /Y "%WORKSPACE%\\application.descriptor" ^
-                        "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%\\"
+                        "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\"
 
                     copy /Y "%WORKSPACE%\\*.msgflow" ^
-                        "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%\\"
+                        "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\"
 
                     copy /Y "%WORKSPACE%\\*.esql" ^
-                        "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%\\"
+                        "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\"
 
                     echo.
                     echo ========================================
@@ -138,53 +162,61 @@ pipeline {
                     echo ========================================
                     echo ACE WORKSPACE PREPARATION SUCCESSFUL
                     echo ========================================
+
+                    exit /b 0
                 '''
             }
         }
 
 
+        // =========================================================
+        // STAGE 4
+        // =========================================================
         stage('Package BAR') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 4 - Package ACE BAR'
                 echo '========================================'
 
                 bat '''
-                    call "%ACE_HOME%\\server\\bin\\mqsiprofile.cmd"
+                    call "%ACE_PROFILE%"
+                    if errorlevel 1 exit /b 1
 
                     echo.
                     echo ========================================
                     echo Creating BAR Directory
                     echo ========================================
 
+                    echo Build Number:
+                    echo %BUILD_NUMBER%
+
                     if not exist "%WORKSPACE%\\builds\\%BUILD_NUMBER%" (
                         mkdir "%WORKSPACE%\\builds\\%BUILD_NUMBER%"
                     )
 
-                    echo.
-                    echo Build Number:
-                    echo %BUILD_NUMBER%
+                    set BAR_DIR=%WORKSPACE%\\builds\\%BUILD_NUMBER%
+                    set BAR_FILE=%BAR_DIR%\\%BAR_NAME%
 
                     echo.
                     echo BAR Directory:
-                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%
+                    echo %BAR_DIR%
 
                     echo.
                     echo BAR File:
-                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%\\%APPLICATION_NAME%.bar
+                    echo %BAR_FILE%
 
                     echo.
                     echo ========================================
                     echo Running ibmint package
                     echo ========================================
 
-                    ibmint package ^
-                        --input-path "%WORKSPACE%\\ace-workspace" ^
-                        --output-bar-file "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%APPLICATION_NAME%.bar"
+                    "%ACE_HOME%\\server\\bin\\ibmint.exe" package ^
+                        --input-path "%WORKSPACE%\\ace-workspace\\%APP_NAME%" ^
+                        --output-bar-file "%BAR_FILE%"
 
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: BAR PACKAGING FAILED
+                        echo ERROR: BAR packaging failed
                         exit /b 1
                     )
 
@@ -193,28 +225,35 @@ pipeline {
                     echo BAR PACKAGING COMPLETED
                     echo ========================================
 
-                    dir "%WORKSPACE%\\builds\\%BUILD_NUMBER%"
+                    dir "%BAR_DIR%"
+
+                    exit /b 0
                 '''
             }
         }
 
 
+        // =========================================================
+        // STAGE 5
+        // =========================================================
         stage('Verify BAR') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 5 - Verify BAR'
                 echo '========================================'
 
                 bat '''
+                    set BAR_FILE=%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%
+
                     echo.
                     echo ========================================
                     echo BAR FILE
                     echo ========================================
 
-                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%\\%APPLICATION_NAME%.bar
+                    echo %BAR_FILE%
 
-                    if not exist "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%APPLICATION_NAME%.bar" (
-                        echo.
+                    if not exist "%BAR_FILE%" (
                         echo ERROR: BAR file does not exist
                         exit /b 1
                     )
@@ -224,10 +263,9 @@ pipeline {
                     echo BAR CONTENTS
                     echo ========================================
 
-                    jar tf "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%APPLICATION_NAME%.bar"
+                    jar tf "%BAR_FILE%"
 
                     if errorlevel 1 (
-                        echo.
                         echo ERROR: Unable to read BAR file
                         exit /b 1
                     )
@@ -237,11 +275,10 @@ pipeline {
                     echo Checking Application ZIP
                     echo ========================================
 
-                    jar tf "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%APPLICATION_NAME%.bar" | findstr /I "%APPLICATION_NAME%.appzip"
+                    jar tf "%BAR_FILE%" | findstr /I "%APP_NAME%.appzip"
 
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: %APPLICATION_NAME%.appzip not found
+                        echo ERROR: %APP_NAME%.appzip not found
                         exit /b 1
                     )
 
@@ -249,105 +286,125 @@ pipeline {
                     echo ========================================
                     echo BAR CREATED SUCCESSFULLY
                     echo ========================================
+
+                    exit /b 0
                 '''
             }
         }
 
 
+        // =========================================================
+        // STAGE 6
+        // CREATE ACE SERVER IF IT DOES NOT EXIST
+        // =========================================================
         stage('Check/Create ACE Server') {
             steps {
+
                 echo '========================================'
-                echo 'STAGE 6 - Check/Create ACE Server'
+                echo 'STAGE 6 - Check/Create ACE Integration Server'
                 echo '========================================'
 
                 bat '''
-                    call "%ACE_HOME%\\server\\bin\\mqsiprofile.cmd"
+                    call "%ACE_PROFILE%"
+                    if errorlevel 1 exit /b 1
 
                     echo.
                     echo ========================================
-                    echo ACE SERVER VALIDATION
+                    echo ACE SERVER WORK DIRECTORY
                     echo ========================================
 
-                    echo ACE Server Work Directory:
-                    echo %ACE_SERVER_WORKDIR%
+                    echo %ACE_SERVER%
 
                     echo.
-                    echo Checking ACE Server...
+                    echo ========================================
+                    echo CHECKING ACE SERVER
+                    echo ========================================
 
-                    if exist "%ACE_SERVER_WORKDIR%\\server.conf.yaml" (
+                    if exist "%ACE_SERVER%" (
 
+                        echo ACE Server directory already exists.
                         echo.
-                        echo ========================================
-                        echo ACE SERVER ALREADY EXISTS
-                        echo ========================================
-                        echo.
 
-                        dir "%ACE_SERVER_WORKDIR%"
+                        if exist "%ACE_SERVER%\\server.conf.yaml" (
+                            echo server.conf.yaml found.
+                            echo ACE Server already configured.
+                        ) else (
+                            echo server.conf.yaml not found.
+                            echo Creating ACE Server...
+                            
+                            "%ACE_HOME%\\server\\bin\\ibmint.exe" create server ^
+                                --name TEST ^
+                                --server-work-dir "%ACE_SERVER%"
+
+                            if errorlevel 1 (
+                                echo ERROR: Failed to create ACE Server
+                                exit /b 1
+                            )
+                        )
 
                     ) else (
 
+                        echo ACE Server does not exist.
                         echo.
-                        echo ========================================
-                        echo ACE SERVER DOES NOT EXIST
-                        echo ========================================
-                        echo Creating ACE Independent Integration Server
-                        echo.
+                        echo Creating ACE Server:
+                        echo %ACE_SERVER%
 
-                        if not exist "C:\\ACE\\servers" (
-                            mkdir "C:\\ACE\\servers"
-                        )
-
-                        echo.
-                        echo Running mqsicreateworkdir...
-                        echo.
-
-                        mqsicreateworkdir "%ACE_SERVER_WORKDIR%"
+                        "%ACE_HOME%\\server\\bin\\ibmint.exe" create server ^
+                            --name TEST ^
+                            --server-work-dir "%ACE_SERVER%"
 
                         if errorlevel 1 (
-                            echo.
-                            echo ERROR: Failed to create ACE server work directory
+                            echo ERROR: Failed to create ACE Server
                             exit /b 1
                         )
 
-                        echo.
-                        echo ========================================
-                        echo ACE SERVER CREATED SUCCESSFULLY
-                        echo ========================================
-
-                        dir "%ACE_SERVER_WORKDIR%"
                     )
 
                     echo.
                     echo ========================================
-                    echo Checking server.conf.yaml
+                    echo VERIFYING ACE SERVER
                     echo ========================================
 
-                    if not exist "%ACE_SERVER_WORKDIR%\\server.conf.yaml" (
-                        echo.
+                    if not exist "%ACE_SERVER%" (
+                        echo ERROR: ACE Server directory was not created
+                        exit /b 1
+                    )
+
+                    if not exist "%ACE_SERVER%\\server.conf.yaml" (
                         echo ERROR: server.conf.yaml was not created
-                        echo.
-                        echo Expected:
-                        echo %ACE_SERVER_WORKDIR%\\server.conf.yaml
                         exit /b 1
                     )
 
                     echo.
+                    echo ACE SERVER DIRECTORY:
+                    dir "%ACE_SERVER%"
+
+                    echo.
                     echo ========================================
-                    echo ACE SERVER VALIDATION SUCCESSFUL
+                    echo ACE SERVER READY
                     echo ========================================
+
+                    exit /b 0
                 '''
             }
         }
 
 
+        // =========================================================
+        // STAGE 7
+        // =========================================================
         stage('Deploy BAR') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 7 - Deploy ACE BAR'
                 echo '========================================'
 
                 bat '''
-                    call "%ACE_HOME%\\server\\bin\\mqsiprofile.cmd"
+                    call "%ACE_PROFILE%"
+                    if errorlevel 1 exit /b 1
+
+                    set BAR_FILE=%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%
 
                     echo.
                     echo ========================================
@@ -355,30 +412,27 @@ pipeline {
                     echo ========================================
 
                     echo Application:
-                    echo %APPLICATION_NAME%
+                    echo %APP_NAME%
 
                     echo.
                     echo BAR:
-                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%\\%APPLICATION_NAME%.bar
+                    echo %BAR_FILE%
 
                     echo.
                     echo ACE Server:
-                    echo %ACE_SERVER_WORKDIR%
+                    echo %ACE_SERVER%
 
                     echo.
                     echo ========================================
                     echo DEPLOYING BAR
                     echo ========================================
 
-                    ibmint deploy ^
-                        --input-bar-file "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%APPLICATION_NAME%.bar" ^
-                        --output-work-directory "%ACE_SERVER_WORKDIR%"
+                    "%ACE_HOME%\\server\\bin\\ibmint.exe" deploy ^
+                        --input-file "%BAR_FILE%" ^
+                        --work-dir "%ACE_SERVER%"
 
                     if errorlevel 1 (
-                        echo.
-                        echo ========================================
-                        echo ERROR: BAR DEPLOYMENT FAILED
-                        echo ========================================
+                        echo ERROR: BAR deployment failed
                         exit /b 1
                     )
 
@@ -386,63 +440,69 @@ pipeline {
                     echo ========================================
                     echo BAR DEPLOYMENT SUCCESSFUL
                     echo ========================================
+
+                    exit /b 0
                 '''
             }
         }
 
 
+        // =========================================================
+        // STAGE 8
+        // =========================================================
         stage('Verify Deployment') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 8 - Verify Deployment'
                 echo '========================================'
 
                 bat '''
-                    call "%ACE_HOME%\\server\\bin\\mqsiprofile.cmd"
+                    call "%ACE_PROFILE%"
+                    if errorlevel 1 exit /b 1
 
                     echo.
                     echo ========================================
                     echo VERIFYING ACE DEPLOYMENT
                     echo ========================================
 
+                    echo.
                     echo Application:
-                    echo %APPLICATION_NAME%
+                    echo %APP_NAME%
 
                     echo.
                     echo ACE Server:
-                    echo %ACE_SERVER_WORKDIR%
+                    echo %ACE_SERVER%
 
                     echo.
                     echo ========================================
                     echo Checking runtime directory
                     echo ========================================
 
-                    if not exist "%ACE_SERVER_WORKDIR%\\run\\%APPLICATION_NAME%" (
-                        echo.
-                        echo ERROR: Application was not deployed
-                        echo.
-                        echo Expected:
-                        echo %ACE_SERVER_WORKDIR%\\run\\%APPLICATION_NAME%
+                    if not exist "%ACE_SERVER%\\run\\%APP_NAME%" (
+                        echo ERROR: Application runtime directory not found
                         exit /b 1
                     )
 
-                    dir /S /B "%ACE_SERVER_WORKDIR%\\run\\%APPLICATION_NAME%"
+                    dir /S /B "%ACE_SERVER%\\run\\%APP_NAME%"
 
                     echo.
                     echo ========================================
-                    echo APPLICATION DEPLOYMENT FOUND
+                    echo APPLICATION DEPLOYED
                     echo ========================================
 
-                    echo.
-                    echo DEPLOYMENT VERIFICATION COMPLETED
-                    echo ========================================
+                    exit /b 0
                 '''
             }
         }
 
 
+        // =========================================================
+        // STAGE 9
+        // =========================================================
         stage('Final Verification') {
             steps {
+
                 echo '========================================'
                 echo 'STAGE 9 - Final Verification'
                 echo '========================================'
@@ -455,15 +515,15 @@ pipeline {
 
                     echo.
                     echo GitHub Repository:
-                    echo https://github.com/Company-ACE/GitHubPOCApp.git
+                    echo %REPOSITORY%
 
                     echo.
                     echo Branch:
-                    echo dev
+                    echo %BRANCH%
 
                     echo.
                     echo Application:
-                    echo %APPLICATION_NAME%
+                    echo %APP_NAME%
 
                     echo.
                     echo Build:
@@ -471,38 +531,39 @@ pipeline {
 
                     echo.
                     echo BAR:
-                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%\\%APPLICATION_NAME%.bar
+                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%
 
                     echo.
                     echo ACE Server:
-                    echo %ACE_SERVER_WORKDIR%
+                    echo %ACE_SERVER%
 
                     echo.
                     echo ========================================
                     echo ACE DEPLOYMENT PIPELINE COMPLETED
                     echo ========================================
+
+                    exit /b 0
                 '''
             }
         }
     }
 
 
+    // =============================================================
+    // POST ACTIONS
+    // =============================================================
     post {
-        always {
-            echo '========================================'
-            echo 'PIPELINE FINISHED'
-            echo '========================================'
-        }
 
         success {
+
             echo '========================================'
             echo 'JENKINS BUILD SUCCESSFUL'
             echo '========================================'
 
-            echo "Application : ${APPLICATION_NAME}"
+            echo "Application : ${APP_NAME}"
             echo "Build       : ${BUILD_NUMBER}"
-            echo "BAR         : ${WORKSPACE}\\builds\\${BUILD_NUMBER}\\${APPLICATION_NAME}.bar"
-            echo "ACE Server  : ${ACE_SERVER_WORKDIR}"
+            echo "BAR         : ${WORKSPACE}\\builds\\${BUILD_NUMBER}\\${BAR_NAME}"
+            echo "ACE Server  : ${ACE_SERVER}"
 
             echo '========================================'
             echo 'GITHUB -> JENKINS -> ACE DEPLOYMENT OK'
@@ -510,11 +571,21 @@ pipeline {
         }
 
         failure {
+
             echo '========================================'
             echo 'JENKINS BUILD FAILED'
             echo '========================================'
 
             echo 'Check the failed stage in the Jenkins console.'
+
+            echo '========================================'
+        }
+
+        always {
+
+            echo '========================================'
+            echo 'PIPELINE FINISHED'
+            echo '========================================'
         }
     }
 }
