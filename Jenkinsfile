@@ -4,47 +4,29 @@ pipeline {
 
     environment {
 
-        // =========================================================
-        // ACE INSTALLATION
-        // =========================================================
-
         ACE_HOME = 'C:\\Program Files\\IBM\\ACE\\12.0.12.22'
 
         ACE_PROFILE = 'C:\\Program Files\\IBM\\ACE\\12.0.12.22\\server\\bin\\mqsiprofile.cmd'
-
-
-        // =========================================================
-        // APPLICATION
-        // =========================================================
-
-        APP_NAME = 'GitHubPOCApp'
-
-
-        // =========================================================
-        // ACE SERVER
-        // =========================================================
 
         SERVER_NAME = 'TEST'
 
         SERVER_WORK_DIR = 'C:\\ACE\\servers\\TEST'
 
+        APPLICATION_NAME = 'GitHubPOCApp'
 
-        // =========================================================
-        // BUILD
-        // =========================================================
+        BAR_NAME = 'GitHubPOCApp.bar'
 
-        BUILD_DIR = "${WORKSPACE}\\builds\\${BUILD_NUMBER}"
-
-        BAR_FILE = "${WORKSPACE}\\builds\\${BUILD_NUMBER}\\GitHubPOCApp.bar"
+        HTTP_TEST_URL = 'http://localhost:7800/GitHubPOCFlow'
     }
-
 
     stages {
 
-
-        // =========================================================
-        // STAGE 1
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 1
+         * GitHub Checkout
+         * ==========================================================
+         */
 
         stage('Checkout') {
 
@@ -64,11 +46,14 @@ pipeline {
                     git rev-parse HEAD
 
                     echo.
+                    echo Git Branch:
+                    git branch --show-current
+
+                    echo.
                     echo Source Files:
                     dir
 
                     echo.
-                    echo ========================================
                     echo GITHUB CHECKOUT SUCCESSFUL
                     echo ========================================
                 '''
@@ -76,9 +61,12 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 2
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 2
+         * Validate ACE installation
+         * ==========================================================
+         */
 
         stage('ACE Validation') {
 
@@ -90,14 +78,12 @@ pipeline {
 
                 bat '''
                     echo.
-                    echo ========================================
                     echo Loading ACE Environment
                     echo ========================================
 
                     call "%ACE_PROFILE%"
 
                     echo.
-                    echo ========================================
                     echo ACE INSTALLATION
                     echo ========================================
 
@@ -106,26 +92,27 @@ pipeline {
 
                     echo.
                     echo Checking ibmint:
+                    where ibmint
 
-                    if not exist "%ACE_HOME%\\server\\bin\\ibmint.exe" (
+                    if errorlevel 1 (
                         echo ERROR: ibmint.exe not found
                         exit /b 1
                     )
 
-                    echo ibmint.exe found
-
                     echo.
                     echo Checking IntegrationServer:
+                    where IntegrationServer
 
-                    if not exist "%ACE_HOME%\\server\\bin\\IntegrationServer.exe" (
+                    if errorlevel 1 (
                         echo ERROR: IntegrationServer.exe not found
                         exit /b 1
                     )
 
-                    echo IntegrationServer.exe found
+                    echo.
+                    echo ACE VERSION:
+                    ibmint --version
 
                     echo.
-                    echo ========================================
                     echo ACE VALIDATION SUCCESSFUL
                     echo ========================================
                 '''
@@ -133,9 +120,12 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 3
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 3
+         * Prepare ACE application
+         * ==========================================================
+         */
 
         stage('Prepare ACE Application') {
 
@@ -147,7 +137,6 @@ pipeline {
 
                 bat '''
                     echo.
-                    echo ========================================
                     echo Cleaning Previous ACE Workspace
                     echo ========================================
 
@@ -156,11 +145,10 @@ pipeline {
                     )
 
                     mkdir "%WORKSPACE%\\ace-workspace"
-                    mkdir "%WORKSPACE%\\ace-workspace\\%APP_NAME%"
 
+                    mkdir "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%"
 
                     echo.
-                    echo ========================================
                     echo Checking ACE Application Files
                     echo ========================================
 
@@ -179,35 +167,29 @@ pipeline {
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ========================================
                     echo Copying ACE Application Files
                     echo ========================================
 
                     copy /Y "%WORKSPACE%\\.project" ^
-                        "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\"
+                        "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%\\"
 
                     copy /Y "%WORKSPACE%\\application.descriptor" ^
-                        "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\"
+                        "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%\\"
 
                     copy /Y "%WORKSPACE%\\*.msgflow" ^
-                        "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\"
+                        "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%\\"
 
                     copy /Y "%WORKSPACE%\\*.esql" ^
-                        "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\"
-
+                        "%WORKSPACE%\\ace-workspace\\%APPLICATION_NAME%\\"
 
                     echo.
-                    echo ========================================
                     echo ACE APPLICATION STRUCTURE
                     echo ========================================
 
                     dir /S /B "%WORKSPACE%\\ace-workspace"
 
-
                     echo.
-                    echo ========================================
                     echo ACE WORKSPACE PREPARATION SUCCESSFUL
                     echo ========================================
                 '''
@@ -215,9 +197,12 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 4
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 4
+         * Build BAR
+         * ==========================================================
+         */
 
         stage('Package BAR') {
 
@@ -229,63 +214,61 @@ pipeline {
 
                 bat '''
                     echo.
-                    echo ========================================
                     echo Loading ACE Environment
                     echo ========================================
 
                     call "%ACE_PROFILE%"
 
-
                     echo.
-                    echo ========================================
                     echo Creating BAR Directory
                     echo ========================================
 
-                    if not exist "%BUILD_DIR%" (
-                        mkdir "%BUILD_DIR%"
+                    if not exist "%WORKSPACE%\\builds\\%BUILD_NUMBER%" (
+                        mkdir "%WORKSPACE%\\builds\\%BUILD_NUMBER%"
                     )
 
+                    echo.
                     echo Build Number:
                     echo %BUILD_NUMBER%
 
                     echo.
                     echo BAR Directory:
-                    echo %BUILD_DIR%
+                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%
 
                     echo.
                     echo BAR File:
-                    echo %BAR_FILE%
-
+                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%
 
                     echo.
-                    echo ========================================
                     echo Running ibmint package
                     echo ========================================
 
                     ibmint package ^
                         --input-path "%WORKSPACE%\\ace-workspace" ^
-                        --output-bar-file "%BAR_FILE%"
+                        --output-bar-file "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%"
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: BAR packaging failed
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ========================================
                     echo BAR PACKAGING COMPLETED
                     echo ========================================
 
-                    dir "%BUILD_DIR%"
+                    dir "%WORKSPACE%\\builds\\%BUILD_NUMBER%"
                 '''
             }
         }
 
 
-        // =========================================================
-        // STAGE 5
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 5
+         * Verify BAR
+         * ==========================================================
+         */
 
         stage('Verify BAR') {
 
@@ -297,46 +280,39 @@ pipeline {
 
                 bat '''
                     echo.
-                    echo ========================================
                     echo BAR FILE
                     echo ========================================
 
-                    echo %BAR_FILE%
+                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%
 
-                    if not exist "%BAR_FILE%" (
+                    if not exist "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%" (
                         echo ERROR: BAR file does not exist
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ========================================
                     echo BAR CONTENTS
                     echo ========================================
 
-                    jar tf "%BAR_FILE%"
+                    jar tf "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%"
 
                     if errorlevel 1 (
                         echo ERROR: Unable to read BAR file
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ========================================
                     echo Checking Application ZIP
                     echo ========================================
 
-                    jar tf "%BAR_FILE%" | findstr /I "%APP_NAME%.appzip"
+                    jar tf "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%" | findstr /I "%APPLICATION_NAME%.appzip"
 
                     if errorlevel 1 (
-                        echo ERROR: %APP_NAME%.appzip not found
+                        echo ERROR: %APPLICATION_NAME%.appzip not found
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ========================================
                     echo BAR CREATED SUCCESSFULLY
                     echo ========================================
                 '''
@@ -344,107 +320,110 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 6
-        // CREATE ACE SERVER
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 6
+         * Stop running ACE server
+         *
+         * This is the important change from your previous pipeline.
+         * ==========================================================
+         */
 
-        stage('Check/Create ACE Server') {
+        stage('Stop ACE Integration Server') {
 
             steps {
 
                 echo '========================================'
-                echo 'STAGE 6 - Check/Create ACE Integration Server'
+                echo 'STAGE 6 - Stop ACE Integration Server'
                 echo '========================================'
 
                 bat '''
                     echo.
-                    echo ========================================
-                    echo ACE SERVER CONFIGURATION
-                    echo ========================================
-
-                    echo Server Name:
-                    echo %SERVER_NAME%
-
-                    echo.
-                    echo Server Work Directory:
-                    echo %SERVER_WORK_DIR%
-
-
-                    echo.
-                    echo ========================================
                     echo Loading ACE Environment
                     echo ========================================
 
                     call "%ACE_PROFILE%"
 
+                    echo.
+                    echo Checking Existing ACE TEST Server
+                    echo ========================================
+
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+                    "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\\\ACE\\\\servers\\\\TEST*' }; if ($p) { Write-Host 'ACE TEST SERVER FOUND'; $p | Select-Object ProcessId,CommandLine | Format-List } else { Write-Host 'ACE TEST SERVER IS NOT RUNNING' }"
 
                     echo.
+                    echo Stopping ACE TEST Server
                     echo ========================================
-                    echo CLEARING OPENSSL_CONF
-                    echo ========================================
 
-                    set "OPENSSL_CONF="
-
-                    echo OPENSSL_CONF=%OPENSSL_CONF%
-
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+                    "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\\\ACE\\\\servers\\\\TEST*' }; if ($p) { $p | ForEach-Object { Write-Host ('Stopping PID ' + $_.ProcessId); Stop-Process -Id $_.ProcessId -Force } } else { Write-Host 'Server already stopped' }"
 
                     echo.
-                    echo ========================================
-                    echo Creating Base Directories
+                    echo Waiting for server to stop...
+                    timeout /t 5 /nobreak
+
+                    echo.
+                    echo Verifying server stopped
                     echo ========================================
 
-                    if not exist "C:\\ACE" (
-                        mkdir "C:\\ACE"
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+                    "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\\\ACE\\\\servers\\\\TEST*' }; if ($p) { Write-Host 'ERROR: ACE TEST SERVER STILL RUNNING'; exit 1 } else { Write-Host 'ACE TEST SERVER STOPPED SUCCESSFULLY' }"
+
+                    if errorlevel 1 (
+                        echo ERROR: Unable to stop ACE TEST server
+                        exit /b 1
                     )
 
-                    if not exist "C:\\ACE\\servers" (
-                        mkdir "C:\\ACE\\servers"
-                    )
-
-
                     echo.
+                    echo ACE SERVER STOP SUCCESSFUL
                     echo ========================================
-                    echo Checking ACE Server Work Directory
-                    echo ========================================
+                '''
+            }
+        }
+
+
+        /*
+         * ==========================================================
+         * STAGE 7
+         * Make sure server work directory exists
+         * ==========================================================
+         */
+
+        stage('Check ACE Server Work Directory') {
+
+            steps {
+
+                echo '========================================'
+                echo 'STAGE 7 - Check ACE Server Work Directory'
+                echo '========================================'
+
+                bat '''
+                    echo.
+                    echo Server Work Directory:
+                    echo %SERVER_WORK_DIR%
 
                     if not exist "%SERVER_WORK_DIR%" (
 
+                        echo.
                         echo Server work directory does not exist.
+                        echo Creating ACE server work directory...
 
-                        echo.
-                        echo Creating:
-                        echo %SERVER_WORK_DIR%
-
-                        mkdir "%SERVER_WORK_DIR%"
-
-
-                        echo.
-                        echo ========================================
-                        echo Running mqsicreateworkdir
-                        echo ========================================
+                        call "%ACE_PROFILE%"
 
                         mqsicreateworkdir "%SERVER_WORK_DIR%"
 
                         if errorlevel 1 (
-                            echo ERROR: mqsicreateworkdir failed
+                            echo ERROR: Failed to create ACE work directory
                             exit /b 1
                         )
 
-
-                        echo.
-                        echo ========================================
-                        echo ACE SERVER WORK DIRECTORY CREATED
-                        echo ========================================
-
                     ) else (
 
+                        echo.
                         echo ACE server work directory already exists.
                     )
 
-
                     echo.
-                    echo ========================================
                     echo ACE SERVER WORK DIRECTORY READY
                     echo ========================================
 
@@ -454,50 +433,46 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 7
-        // DEPLOY BAR
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 8
+         * Deploy BAR
+         * ==========================================================
+         */
 
         stage('Deploy BAR') {
 
             steps {
 
                 echo '========================================'
-                echo 'STAGE 7 - Deploy BAR'
+                echo 'STAGE 8 - Deploy BAR'
                 echo '========================================'
 
                 bat '''
                     echo.
-                    echo ========================================
                     echo DEPLOYING BAR
                     echo ========================================
 
-                    call "%ACE_PROFILE%"
+                    echo Application:
+                    echo %APPLICATION_NAME%
 
                     echo.
                     echo BAR:
-                    echo %BAR_FILE%
+                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%
 
                     echo.
                     echo Server Work Directory:
                     echo %SERVER_WORK_DIR%
 
-
-                    if not exist "%BAR_FILE%" (
-                        echo ERROR: BAR file not found
-                        exit /b 1
-                    )
-
+                    call "%ACE_PROFILE%"
 
                     echo.
-                    echo ========================================
                     echo Running ibmint deploy
                     echo ========================================
 
                     ibmint deploy ^
-                        --input-bar-file "%BAR_FILE%" ^
-                        --output-work-directory "%SERVER_WORK_DIR%"
+                        --input-file "%WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%" ^
+                        --work-dir "%SERVER_WORK_DIR%"
 
                     if errorlevel 1 (
                         echo.
@@ -505,114 +480,60 @@ pipeline {
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ========================================
                     echo BAR DEPLOYMENT SUCCESSFUL
                     echo ========================================
-
-                    echo BAR deployed to:
-                    echo %SERVER_WORK_DIR%
                 '''
             }
         }
 
 
-        // =========================================================
-        // STAGE 8
-        // START ACE SERVER
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 9
+         * Start ACE server
+         * ==========================================================
+         */
 
         stage('Start ACE Integration Server') {
 
             steps {
 
                 echo '========================================'
-                echo 'STAGE 8 - Start ACE Integration Server'
+                echo 'STAGE 9 - Start ACE Integration Server'
                 echo '========================================'
 
                 bat '''
                     echo.
-                    echo ========================================
-                    echo STARTING ACE SERVER
+                    echo STARTING ACE TEST SERVER
                     echo ========================================
 
                     call "%ACE_PROFILE%"
 
+                    echo.
+                    echo Starting IntegrationServer...
+
+                    start "" /B "%ACE_HOME%\\server\\bin\\IntegrationServer.exe" ^
+                        -w "%SERVER_WORK_DIR%"
 
                     echo.
-                    echo ========================================
-                    echo Clearing OPENSSL_CONF
-                    echo ========================================
+                    echo Waiting for ACE server startup...
 
-                    set "OPENSSL_CONF="
-
+                    timeout /t 15 /nobreak
 
                     echo.
-                    echo ========================================
-                    echo Checking Existing ACE TEST Server
-                    echo ========================================
-
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\ACE\\servers\\TEST*' }; if ($p) { Write-Host 'ACE TEST SERVER ALREADY RUNNING' } else { exit 1 }"
-
-                    if not errorlevel 1 (
-                        echo.
-                        echo ACE TEST SERVER IS ALREADY RUNNING
-                        goto SERVER_RUNNING
-                    )
-
-
-                    echo.
-                    echo ========================================
-                    echo Starting IntegrationServer.exe
+                    echo Checking ACE TEST Server
                     echo ========================================
 
-                    echo Work Directory:
-                    echo %SERVER_WORK_DIR%
-
-
-                    start "ACE-%SERVER_NAME%" /B cmd /c ""%ACE_HOME%\\server\\bin\\IntegrationServer.exe" --work-dir "%SERVER_WORK_DIR%""
-
-
-                    echo.
-                    echo ACE server start command issued.
-
-
-                    echo.
-                    echo ========================================
-                    echo Waiting for ACE Server
-                    echo ========================================
-
-                    timeout /t 5 /nobreak
-
-
-                    echo.
-                    echo Waiting additional time for initialization...
-
-                    timeout /t 10 /nobreak
-
-
-                    :SERVER_RUNNING
-
-                    echo.
-                    echo ========================================
-                    echo ACE SERVER PROCESS CHECK
-                    echo ========================================
-
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\ACE\\servers\\TEST*' }; if ($p) { Write-Host 'ACE TEST SERVER IS RUNNING'; $p | Select-Object ProcessId,CommandLine | Format-List } else { Write-Host 'ERROR: ACE TEST SERVER IS NOT RUNNING'; exit 1 }"
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+                    "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\\\ACE\\\\servers\\\\TEST*' }; if ($p) { Write-Host 'ACE TEST SERVER STARTED'; $p | Select-Object ProcessId,CommandLine | Format-List } else { Write-Host 'ERROR: ACE TEST SERVER DID NOT START'; exit 1 }"
 
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: IntegrationServer.exe failed to start
-                        echo.
-                        echo Check ACE logs under:
-                        echo %SERVER_WORK_DIR%\\logs
+                        echo ERROR: ACE TEST SERVER FAILED TO START
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ========================================
                     echo ACE SERVER STARTED SUCCESSFULLY
                     echo ========================================
                 '''
@@ -620,35 +541,35 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 9
-        // VERIFY DEPLOYMENT
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 10
+         * Verify server + application deployment
+         * ==========================================================
+         */
 
         stage('Verify Deployment') {
 
             steps {
 
                 echo '========================================'
-                echo 'STAGE 9 - Verify Deployment'
+                echo 'STAGE 10 - Verify Deployment'
                 echo '========================================'
 
                 bat '''
                     echo.
-                    echo ========================================
                     echo CHECKING ACE SERVER
                     echo ========================================
 
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\ACE\\servers\\TEST*' }; if ($p) { Write-Host 'ACE TEST SERVER IS RUNNING' } else { Write-Host 'ERROR: ACE TEST SERVER IS NOT RUNNING'; exit 1 }"
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+                    "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\\\ACE\\\\servers\\\\TEST*' }; if ($p) { Write-Host 'ACE TEST SERVER IS RUNNING' } else { Write-Host 'ERROR: ACE TEST SERVER IS NOT RUNNING'; exit 1 }"
 
                     if errorlevel 1 (
-                        echo ERROR: ACE TEST SERVER IS NOT RUNNING
+                        echo ERROR: IntegrationServer is not running
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ========================================
                     echo CHECKING SERVER WORK DIRECTORY
                     echo ========================================
 
@@ -660,29 +581,23 @@ pipeline {
                     echo Server directory exists:
                     echo %SERVER_WORK_DIR%
 
+                    echo.
+                    echo CHECKING APPLICATION
+                    echo ========================================
+
+                    dir /S /B "%SERVER_WORK_DIR%" | findstr /I "%APPLICATION_NAME%"
 
                     echo.
-                    echo ========================================
-                    echo CHECKING DEPLOYED APPLICATION
+                    echo CHECKING RUNTIME DIRECTORY
                     echo ========================================
 
                     if exist "%SERVER_WORK_DIR%\\run" (
                         echo ACE runtime directory found
                     ) else (
-                        echo WARNING: run directory not found yet
+                        echo WARNING: run directory not found
                     )
 
-
                     echo.
-                    echo ========================================
-                    echo ACE SERVER FILE STRUCTURE
-                    echo ========================================
-
-                    dir "%SERVER_WORK_DIR%"
-
-
-                    echo.
-                    echo ========================================
                     echo DEPLOYMENT VERIFICATION SUCCESSFUL
                     echo ========================================
                 '''
@@ -690,17 +605,64 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 10
-        // FINAL VERIFICATION
-        // =========================================================
+        /*
+         * ==========================================================
+         * STAGE 11
+         * Test actual application endpoint
+         *
+         * IMPORTANT:
+         * Change HTTP_TEST_URL above to your real endpoint.
+         * ==========================================================
+         */
+
+        stage('Application Test') {
+
+            steps {
+
+                echo '========================================'
+                echo 'STAGE 11 - Application Test'
+                echo '========================================'
+
+                bat '''
+                    echo.
+                    echo Testing Application Endpoint
+                    echo ========================================
+
+                    echo URL:
+                    echo %HTTP_TEST_URL%
+
+                    echo.
+                    echo Calling application...
+
+                    curl.exe -i --fail "%HTTP_TEST_URL%"
+
+                    if errorlevel 1 (
+                        echo.
+                        echo ERROR: Application endpoint test failed
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo APPLICATION ENDPOINT TEST SUCCESSFUL
+                    echo ========================================
+                '''
+            }
+        }
+
+
+        /*
+         * ==========================================================
+         * STAGE 12
+         * Final verification
+         * ==========================================================
+         */
 
         stage('Final Verification') {
 
             steps {
 
                 echo '========================================'
-                echo 'STAGE 10 - FINAL VERIFICATION'
+                echo 'STAGE 12 - FINAL VERIFICATION'
                 echo '========================================'
 
                 bat '''
@@ -709,8 +671,9 @@ pipeline {
                     echo PIPELINE SUMMARY
                     echo ========================================
 
+                    echo.
                     echo Application:
-                    echo %APP_NAME%
+                    echo %APPLICATION_NAME%
 
                     echo.
                     echo Server:
@@ -722,7 +685,7 @@ pipeline {
 
                     echo.
                     echo BAR:
-                    echo %BAR_FILE%
+                    echo %WORKSPACE%\\builds\\%BUILD_NUMBER%\\%BAR_NAME%
 
                     echo.
                     echo Build Number:
@@ -732,19 +695,18 @@ pipeline {
                     echo Git Commit:
                     git rev-parse HEAD
 
-
                     echo.
                     echo ========================================
                     echo FINAL ACE SERVER CHECK
                     echo ========================================
 
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\ACE\\servers\\TEST*' }; if ($p) { Write-Host 'ACE TEST SERVER IS RUNNING'; $p | Select-Object ProcessId,CommandLine | Format-List } else { Write-Host 'ERROR: ACE TEST SERVER IS NOT RUNNING'; exit 1 }"
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+                    "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*C:\\\\ACE\\\\servers\\\\TEST*' }; if ($p) { Write-Host 'ACE TEST SERVER IS RUNNING'; $p | Select-Object ProcessId,CommandLine | Format-List } else { Write-Host 'ERROR: ACE TEST SERVER IS NOT RUNNING'; exit 1 }"
 
                     if errorlevel 1 (
                         echo ERROR: Final ACE server verification failed
                         exit /b 1
                     )
-
 
                     echo.
                     echo ========================================
@@ -756,9 +718,11 @@ pipeline {
     }
 
 
-    // =============================================================
-    // POST
-    // =============================================================
+    /*
+     * ==========================================================
+     * POST ACTIONS
+     * ==========================================================
+     */
 
     post {
 
@@ -768,13 +732,12 @@ pipeline {
             echo 'JENKINS BUILD SUCCESS'
             echo '========================================'
 
-            echo "Application: ${APP_NAME}"
-            echo "Server: ${SERVER_NAME}"
-            echo "BAR: ${BAR_FILE}"
+            echo "Application: ${env.APPLICATION_NAME}"
+            echo "Server: ${env.SERVER_NAME}"
+            echo "Build: ${env.BUILD_NUMBER}"
+            echo "BAR: ${env.WORKSPACE}\\builds\\${env.BUILD_NUMBER}\\${env.BAR_NAME}"
 
-            echo '========================================'
         }
-
 
         failure {
 
@@ -782,14 +745,10 @@ pipeline {
             echo 'JENKINS BUILD FAILED'
             echo '========================================'
 
-            echo 'Check the failed stage in the Jenkins console.'
+            echo 'Check the failed stage and ACE logs.'
+            echo "ACE Log Directory: ${env.SERVER_WORK_DIR}\\log"
 
-            echo 'If the failure is related to ACE startup, check:'
-            echo 'C:\\ACE\\servers\\TEST\\logs'
-
-            echo '========================================'
         }
-
 
         always {
 
