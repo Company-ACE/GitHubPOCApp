@@ -5,7 +5,7 @@ CREATE COMPUTE MODULE GitHubPOCFlow_Compute
 	BEGIN
 		-- CALL CopyMessageHeaders();
 		-- CALL CopyEntireMessage();
-		SET OutputRoot.JSON.data.message= 'Hello from ACE GitHub Azure Pipeline POC1';
+		SET OutputRoot.JSON.data.message= 'Hello from ACE GitHub Azure Pipeline ';
 		RETURN TRUE;
 	END;
 
