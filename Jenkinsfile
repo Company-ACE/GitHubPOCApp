@@ -21,10 +21,6 @@ pipeline {
 
     stages {
 
-        // =========================================================
-        // STAGE 1 - CHECKOUT
-        // =========================================================
-
         stage('Checkout') {
 
             steps {
@@ -55,10 +51,6 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 2 - ACE VALIDATION
-        // =========================================================
-
         stage('ACE Validation') {
 
             steps {
@@ -86,7 +78,7 @@ pipeline {
                         exit /b 1
                     )
 
-                    echo %ACE_HOME%\\server\\bin\\ibmint.exe
+                    echo ibmint.exe found
 
                     echo.
                     echo Checking IntegrationServer:
@@ -96,7 +88,7 @@ pipeline {
                         exit /b 1
                     )
 
-                    echo %ACE_HOME%\\server\\bin\\IntegrationServer.exe
+                    echo IntegrationServer.exe found
 
                     echo.
                     echo ========================================
@@ -106,10 +98,6 @@ pipeline {
             }
         }
 
-
-        // =========================================================
-        // STAGE 3 - PREPARE ACE APPLICATION
-        // =========================================================
 
         stage('Prepare ACE Application') {
 
@@ -185,10 +173,6 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 4 - PACKAGE BAR
-        // =========================================================
-
         stage('Package BAR') {
 
             steps {
@@ -209,7 +193,6 @@ pipeline {
                         mkdir "%BUILD_DIR%"
                     )
 
-                    echo.
                     echo Build Number:
                     echo %BUILD_NUMBER%
 
@@ -245,10 +228,6 @@ pipeline {
             }
         }
 
-
-        // =========================================================
-        // STAGE 5 - VERIFY BAR
-        // =========================================================
 
         stage('Verify BAR') {
 
@@ -304,10 +283,6 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 6 - CREATE / START TEST SERVER
-        // =========================================================
-
         stage('Check/Create ACE Server') {
 
             steps {
@@ -317,8 +292,6 @@ pipeline {
                 echo '========================================'
 
                 bat '''
-                    call "%ACE_PROFILE%"
-
                     echo.
                     echo ========================================
                     echo ACE SERVER CONFIGURATION
@@ -327,30 +300,55 @@ pipeline {
                     echo Server Name:
                     echo %SERVER_NAME%
 
-                    echo Server Directory:
+                    echo Server Work Directory:
                     echo %SERVER_WORK_DIR%
 
                     echo.
+                    echo ========================================
+                    echo Loading ACE Environment
+                    echo ========================================
+
+                    call "%ACE_PROFILE%"
+
+                    if errorlevel 1 (
+                        echo ERROR: ACE profile failed
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ========================================
+                    echo CLEARING OPENSSL_CONF
+                    echo ========================================
+
+                    set "OPENSSL_CONF="
+
+                    echo OPENSSL_CONF=%OPENSSL_CONF%
+
+                    echo.
+                    echo ========================================
+                    echo Creating Base Directories
+                    echo ========================================
 
                     if not exist "C:\\ACE" (
-                        echo Creating C:\\ACE
                         mkdir "C:\\ACE"
                     )
 
                     if not exist "C:\\ACE\\servers" (
-                        echo Creating C:\\ACE\\servers
                         mkdir "C:\\ACE\\servers"
                     )
 
                     echo.
                     echo ========================================
-                    echo CHECKING SERVER WORK DIRECTORY
+                    echo Checking ACE Server Work Directory
                     echo ========================================
 
                     if not exist "%SERVER_WORK_DIR%" (
 
-                        echo TEST server does not exist.
-                        echo Creating TEST server...
+                        echo Server work directory does not exist.
+
+                        echo.
+                        echo Creating:
+                        echo %SERVER_WORK_DIR%
 
                         mkdir "%SERVER_WORK_DIR%"
 
@@ -359,95 +357,78 @@ pipeline {
                             exit /b 1
                         )
 
+                        echo.
+                        echo ========================================
+                        echo Running mqsicreateworkdir
+                        echo ========================================
+
+                        set "OPENSSL_CONF="
+
                         mqsicreateworkdir "%SERVER_WORK_DIR%"
 
                         if errorlevel 1 (
+                            echo.
                             echo ERROR: mqsicreateworkdir failed
+                            echo.
+                            echo Checking OPENSSL_CONF:
+                            echo [%OPENSSL_CONF%]
                             exit /b 1
                         )
 
                         echo.
-                        echo TEST SERVER WORK DIRECTORY CREATED
+                        echo ========================================
+                        echo ACE SERVER WORK DIRECTORY CREATED
+                        echo ========================================
 
                     ) else (
 
-                        echo TEST server work directory already exists.
+                        echo.
+                        echo ========================================
+                        echo ACE SERVER WORK DIRECTORY EXISTS
+                        echo ========================================
 
+                        echo %SERVER_WORK_DIR%
                     )
 
+                    echo.
+                    echo ========================================
+                    echo CHECKING ACE SERVER PROCESS
+                    echo ========================================
+
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*%SERVER_WORK_DIR%*' }; if ($p) { Write-Host 'TEST ACE Integration Server is already running.' } else { Write-Host 'TEST ACE Integration Server is not running.' }"
 
                     echo.
                     echo ========================================
-                    echo CHECKING TEST ACE SERVER PROCESS
+                    echo STARTING ACE SERVER IF REQUIRED
                     echo ========================================
 
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-                    "$serverPath='%SERVER_WORK_DIR%'; ^
-                    $p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | ^
-                    Where-Object { $_.CommandLine -like ('*' + $serverPath + '*') }; ^
-                    if ($p) { ^
-                        Write-Host 'TEST IntegrationServer is already running.' ^
-                    } else { ^
-                        Write-Host 'TEST IntegrationServer is NOT running.' ^
-                    }"
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*%SERVER_WORK_DIR%*' }; if (-not $p) { Write-Host 'Starting TEST ACE Integration Server...'; Start-Process -FilePath '%ACE_HOME%\\server\\bin\\IntegrationServer.exe' -ArgumentList '--work-dir','%SERVER_WORK_DIR%' -WindowStyle Hidden } else { Write-Host 'TEST ACE Integration Server already running.' }"
 
+                    echo.
+                    echo Waiting for ACE server initialization...
+
+                    timeout /t 15 /nobreak >nul
 
                     echo.
                     echo ========================================
-                    echo STARTING TEST ACE SERVER IF REQUIRED
+                    echo VERIFYING ACE SERVER PROCESS
                     echo ========================================
 
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-                    "$serverPath='%SERVER_WORK_DIR%'; ^
-                    $p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | ^
-                    Where-Object { $_.CommandLine -like ('*' + $serverPath + '*') }; ^
-                    if (-not $p) { ^
-                        Write-Host 'Starting TEST IntegrationServer...'; ^
-                        $env:OPENSSL_CONF=''; ^
-                        Start-Process -FilePath '%ACE_HOME%\\server\\bin\\IntegrationServer.exe' ^
-                        -ArgumentList '--work-dir', $serverPath ^
-                        -WindowStyle Hidden; ^
-                    } else { ^
-                        Write-Host 'TEST IntegrationServer already running. No start required.' ^
-                    }"
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*%SERVER_WORK_DIR%*' }; if ($p) { Write-Host 'ACE TEST SERVER IS RUNNING' } else { Write-Host 'ERROR: ACE TEST SERVER IS NOT RUNNING'; exit 1 }"
 
-
-                    echo.
-                    echo Waiting for TEST ACE server to initialize...
-
-                    powershell -NoProfile -Command "Start-Sleep -Seconds 15"
-
+                    if errorlevel 1 (
+                        echo ERROR: ACE Integration Server failed to start
+                        exit /b 1
+                    )
 
                     echo.
                     echo ========================================
-                    echo FINAL TEST ACE SERVER CHECK
-                    echo ========================================
-
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-                    "$serverPath='%SERVER_WORK_DIR%'; ^
-                    $p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | ^
-                    Where-Object { $_.CommandLine -like ('*' + $serverPath + '*') }; ^
-                    if ($p) { ^
-                        Write-Host 'TEST IntegrationServer is RUNNING.'; ^
-                        $p | Select-Object ProcessId,CommandLine ^
-                    } else { ^
-                        Write-Host 'ERROR: TEST IntegrationServer is NOT running'; ^
-                        exit 1 ^
-                    }"
-
-
-                    echo.
-                    echo ========================================
-                    echo ACE TEST SERVER IS RUNNING
+                    echo ACE SERVER IS RUNNING
                     echo ========================================
                 '''
             }
         }
 
-
-        // =========================================================
-        // STAGE 7 - DEPLOY BAR
-        // =========================================================
 
         stage('Deploy BAR') {
 
@@ -458,8 +439,6 @@ pipeline {
                 echo '========================================'
 
                 bat '''
-                    call "%ACE_PROFILE%"
-
                     echo.
                     echo ========================================
                     echo DEPLOYING BAR
@@ -471,6 +450,15 @@ pipeline {
                     echo.
                     echo Server Work Directory:
                     echo %SERVER_WORK_DIR%
+
+                    call "%ACE_PROFILE%"
+
+                    if errorlevel 1 (
+                        echo ERROR: ACE profile failed
+                        exit /b 1
+                    )
+
+                    set "OPENSSL_CONF="
 
                     echo.
                     echo Running ibmint deploy...
@@ -495,10 +483,6 @@ pipeline {
         }
 
 
-        // =========================================================
-        // STAGE 8 - VERIFY DEPLOYMENT
-        // =========================================================
-
         stage('Verify Deployment') {
 
             steps {
@@ -518,25 +502,20 @@ pipeline {
                         exit /b 1
                     )
 
-                    dir /S /B "%SERVER_WORK_DIR%"
-
+                    echo Server directory exists:
+                    echo %SERVER_WORK_DIR%
 
                     echo.
                     echo ========================================
-                    echo CHECKING TEST ACE SERVER
+                    echo CHECKING ACE SERVER PROCESS
                     echo ========================================
 
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-                    "$serverPath='%SERVER_WORK_DIR%'; ^
-                    $p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | ^
-                    Where-Object { $_.CommandLine -like ('*' + $serverPath + '*') }; ^
-                    if ($p) { ^
-                        Write-Host 'TEST IntegrationServer is running.' ^
-                    } else { ^
-                        Write-Host 'ERROR: TEST IntegrationServer is NOT running'; ^
-                        exit 1 ^
-                    }"
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$p = Get-CimInstance Win32_Process -Filter \\"Name='IntegrationServer.exe'\\" | Where-Object { $_.CommandLine -like '*%SERVER_WORK_DIR%*' }; if ($p) { Write-Host 'ACE TEST SERVER IS RUNNING' } else { Write-Host 'ERROR: ACE TEST SERVER IS NOT RUNNING'; exit 1 }"
 
+                    if errorlevel 1 (
+                        echo ERROR: IntegrationServer.exe is not running
+                        exit /b 1
+                    )
 
                     echo.
                     echo ========================================
@@ -546,10 +525,6 @@ pipeline {
             }
         }
 
-
-        // =========================================================
-        // STAGE 9 - FINAL VERIFICATION
-        // =========================================================
 
         stage('Final Verification') {
 
@@ -568,19 +543,15 @@ pipeline {
                     echo Application:
                     echo %APP_NAME%
 
-                    echo.
                     echo Server:
                     echo %SERVER_NAME%
 
-                    echo.
                     echo Server Work Directory:
                     echo %SERVER_WORK_DIR%
 
-                    echo.
                     echo BAR:
                     echo %BAR_FILE%
 
-                    echo.
                     echo Build Number:
                     echo %BUILD_NUMBER%
 
@@ -598,10 +569,6 @@ pipeline {
     }
 
 
-    // =============================================================
-    // POST ACTIONS
-    // =============================================================
-
     post {
 
         success {
@@ -613,8 +580,6 @@ pipeline {
             echo "Application: ${APP_NAME}"
             echo "Server: ${SERVER_NAME}"
             echo "BAR: ${BAR_FILE}"
-
-            echo '========================================'
         }
 
         failure {
@@ -624,8 +589,6 @@ pipeline {
             echo '========================================'
 
             echo 'Check the failed stage in the Jenkins console.'
-
-            echo '========================================'
         }
 
         always {
