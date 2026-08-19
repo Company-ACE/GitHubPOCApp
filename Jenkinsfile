@@ -81,42 +81,61 @@ pipeline {
             }
         }
 
-        stage('Create BAR') {
-            steps {
-                echo '========================================'
-                echo 'STAGE 3 - Create BAR File'
-                echo '========================================'
+       stage('Create BAR') {
+    steps {
+        echo '========================================'
+        echo 'STAGE 3 - Create BAR File'
+        echo '========================================'
 
-                bat '''
-                    if exist "%WORKSPACE%\\%BAR_DIR%" (
-                        rmdir /S /Q "%WORKSPACE%\\%BAR_DIR%"
-                    )
+        bat '''
+            echo.
+            echo Creating ACE workspace...
 
-                    mkdir "%WORKSPACE%\\%BAR_DIR%"
+            if exist "%WORKSPACE%\\ace-workspace" (
+                rmdir /S /Q "%WORKSPACE%\\ace-workspace"
+            )
 
-                    call "%ACE_HOME%\\server\\bin\\mqsiprofile.cmd"
+            mkdir "%WORKSPACE%\\ace-workspace"
+            mkdir "%WORKSPACE%\\ace-workspace\\%APP_NAME%"
 
-                    echo.
-                    echo Creating BAR:
-                    echo %WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%
+            echo.
+            echo Copying ACE project...
 
-                    mqsicreatebar ^
-                        -data "%WORKSPACE%" ^
-                        -b "%WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%" ^
-                        -o "GitHubPOCFlow.msgflow" ^
-                        -cleanBuild
+            xcopy "%WORKSPACE%\\.project" "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\" /Y
+            xcopy "%WORKSPACE%\\application.descriptor" "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\" /Y
+            xcopy "%WORKSPACE%\\*.msgflow" "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\" /Y
+            xcopy "%WORKSPACE%\\*.esql" "%WORKSPACE%\\ace-workspace\\%APP_NAME%\\" /Y
 
-                    if errorlevel 1 (
-                        echo.
-                        echo ERROR: BAR creation failed
-                        exit /b 1
-                    )
+            echo.
+            echo ACE workspace structure:
 
-                    echo.
-                    echo BAR creation completed.
-                '''
-            }
-        }
+            dir /S /B "%WORKSPACE%\\ace-workspace"
+
+            echo.
+            echo Loading ACE environment...
+
+            call "%ACE_HOME%\\server\\bin\\mqsiprofile.cmd"
+
+            echo.
+            echo Creating BAR:
+
+            mqsicreatebar ^
+                -data "%WORKSPACE%\\ace-workspace" ^
+                -b "%WORKSPACE%\\%BAR_DIR%\\%BAR_NAME%" ^
+                -p "%APP_NAME%" ^
+                -cleanBuild
+
+            if errorlevel 1 (
+                echo.
+                echo ERROR: BAR creation failed
+                exit /b 1
+            )
+
+            echo.
+            echo BAR creation completed successfully.
+        '''
+    }
+}
 
         stage('Verify BAR') {
             steps {
